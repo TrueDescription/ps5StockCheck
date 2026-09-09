@@ -2,7 +2,7 @@ name: PS5 Stock Checker
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
 
   workflow_dispatch:
     inputs:
@@ -43,3 +43,12 @@ jobs:
           CUSTOM_URL: ${{ inputs.custom_url || '' }}
           DISABLE_PING: ${{ inputs.disable_ping || 'false' }}
         run: python check_stock.py
+      - name: Notify Discord if checker fails
+        if: ${{ failure() }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -sS \
+            -H "Content-Type: application/json" \
+            -d "{\"content\":\"⚠️ **PS5 STOCK CHECKER ERROR** ⚠️\nThe stock checker failed or could not determine stock status.\nCheck the GitHub Actions logs:\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$DISCORD_WEBHOOK"
