@@ -2,31 +2,47 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
-URL = "https://mtcfactoryoutlet.com/product/playstation-5-ps5-disc-edition-console-cfi-1x15a-no-stand-included-2/"
+DEFAULT_PS5_URL = "https://mtcfactoryoutlet.com/product/playstation-5-ps5-disc-edition-console-cfi-1x15a-no-stand-included-2/"
+
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK")
-TEST_MODE = os.environ.get("TEST_MODE") == "true"
+DISABLE_PING = os.environ.get("DISABLE_PING") == "true"
+EVENT_NAME = os.environ.get("EVENT_NAME", "")
+CUSTOM_URL = os.environ.get("CUSTOM_URL", "").strip()
+
+# Fork logic: if triggered by cron or no custom URL was entered, use the default PS5 URL
+if EVENT_NAME == "schedule" or not CUSTOM_URL:
+    URL = DEFAULT_PS5_URL
+else:
+    URL = CUSTOM_URL
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
 def send_discord_msg(message):
-    if not WEBHOOK:
-        print("No webhook URL found in environment variables.")
+    if DISABLE_PING:
+        print("\n🔕 [SILENT MODE] Would have sent this message to Discord:")
+        print(f'"{message}"\n')
         return
+        
+    if not WEBHOOK:
+        print("No webhook URL configured.")
+        return
+        
     requests.post(WEBHOOK, json={"content": message})
 
 def main():
+    print(f"Triggered by: {EVENT_NAME or 'manual'}")
+    print(f"Checking URL: {URL}")
+
     response = requests.get(URL, headers=headers)
     response.raise_for_status()
     
     soup = BeautifulSoup(response.text, 'html.parser')
     
-    # WooCommerce standard indicators
     out_of_stock_tag = soup.find(class_="out-of-stock")
     add_to_cart_btn = soup.find(name="button", class_="single_add_to_cart_button")
     
-    # Logic to determine stock
     is_in_stock = False
     if add_to_cart_btn:
         is_in_stock = True
@@ -36,13 +52,10 @@ def main():
         is_in_stock = True
         
     if is_in_stock:
-        print("Status: IN STOCK")
-        send_discord_msg(f"🚨 **PS5 IS IN STOCK!** 🚨\nGrab it here: {URL}")
+        print("Result: IN STOCK")
+        send_discord_msg(f"🚨 **ITEM IS IN STOCK!** 🚨\nGrab it here: {URL}")
     else:
-        print("Status: OUT OF STOCK")
-        if TEST_MODE:
-            print("Running in test mode. Sending test ping...")
-            send_discord_msg(f"🛠️ **TEST RUN** 🛠️\nYour GitHub Action is working perfectly, but the PS5 is currently OUT OF STOCK.\nLink: {URL}")
+        print("Result: OUT OF STOCK")
 
 if __name__ == "__main__":
     main()
