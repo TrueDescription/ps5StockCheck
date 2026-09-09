@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import sys
 from bs4 import BeautifulSoup
 
 DEFAULT_PS5_URL = (
@@ -218,12 +219,12 @@ def main():
         print("Result: OUT OF STOCK")
 
     else:
-        # Treat parsing failures differently from genuine out-of-stock.
         print("Result: UNKNOWN")
         print(
             "⚠️ Could not find a recognized WooCommerce "
             "stock indicator on the page."
         )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
