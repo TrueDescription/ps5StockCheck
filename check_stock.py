@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 from bs4 import BeautifulSoup
 
 DEFAULT_PS5_URL = "https://mtcfactoryoutlet.com/product/playstation-5-ps5-disc-edition-console-cfi-1x15a-no-stand-included-2/"
@@ -9,7 +10,6 @@ DISABLE_PING = os.environ.get("DISABLE_PING") == "true"
 EVENT_NAME = os.environ.get("EVENT_NAME", "")
 CUSTOM_URL = os.environ.get("CUSTOM_URL", "").strip()
 
-# Fork logic: if triggered by cron or no custom URL was entered, use the default PS5 URL
 if EVENT_NAME == "schedule" or not CUSTOM_URL:
     URL = DEFAULT_PS5_URL
 else:
@@ -39,18 +39,41 @@ def main():
     response.raise_for_status()
     
     soup = BeautifulSoup(response.text, 'html.parser')
-    
-    out_of_stock_tag = soup.find(class_="out-of-stock")
-    add_to_cart_btn = soup.find(name="button", class_="single_add_to_cart_button")
-    
     is_in_stock = False
-    if add_to_cart_btn:
-        is_in_stock = True
-    elif out_of_stock_tag and "Out of stock" in out_of_stock_tag.text:
-        is_in_stock = False
-    elif "Out of stock" not in response.text:
-        is_in_stock = True
-        
+    
+    # Find all the hidden JSON structured data scripts on the page
+    json_scripts = soup.find_all('script', type='application/ld+json')
+    
+    for script in json_scripts:
+        if not script.string:
+            continue
+            
+        try:
+            data = json.loads(script.string)
+            # WooCommerce sometimes wraps data in a '@graph' list
+            graph = data.get('@graph', [data])
+            
+            for item in graph:
+                # Look specifically for the Product data block
+                if item.get('@type') == 'Product':
+                    offers = item.get('offers', [{}])
+                    
+                    # Ensure offers is a list to iterate over
+                    if isinstance(offers, dict):
+                        offers = [offers]
+                        
+                    for offer in offers:
+                        # Extract the standardized availability URL
+                        availability = offer.get('availability', '')
+                        
+                        # Schema.org standard is "http://schema.org/InStock" or "http://schema.org/OutOfStock"
+                        if 'InStock' in availability:
+                            is_in_stock = True
+                            
+        except json.JSONDecodeError:
+            # If a block fails to parse, just skip it and check the next one
+            continue
+            
     if is_in_stock:
         print("Result: IN STOCK")
         send_discord_msg(f"🚨 **ITEM IS IN STOCK!** 🚨\nGrab it here: {URL}")
